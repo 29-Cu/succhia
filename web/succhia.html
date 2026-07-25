@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>succhia</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg,#1a1a2e);color:var(--text,#eee)}
+#chatFrame{position:fixed;inset:0;width:100%;height:100dvh;border:0;z-index:1}
+
+/* ===== 悬浮球 ===== */
+#ball{position:fixed;z-index:30;width:52px;height:52px;border-radius:99px;
+  display:none;align-items:center;justify-content:center;
+  background:var(--glass-surface,rgba(30,30,60,.7));
+  backdrop-filter:blur(var(--glass-blur,20px)) saturate(1.2);
+  -webkit-backdrop-filter:blur(var(--glass-blur,20px)) saturate(1.2);
+  border:1px solid var(--border-soft,rgba(178,102,255,.3));
+  box-shadow:0 4px 16px rgba(0,0,0,.35);
+  color:var(--text-mute,#aaa);touch-action:none;user-select:none;-webkit-user-select:none}
+#ball.vis{display:flex}
+#ball svg{pointer-events:none}
+#ball.on{color:var(--accent,#b266ff);border-color:var(--accent-line,rgba(178,102,255,.38));box-shadow:var(--glow-shadow,0 0 12px rgba(178,102,255,.4)),0 4px 16px rgba(0,0,0,.35)}
+#ball.re{color:var(--text,#eee);animation:ballpulse 1.2s ease-in-out infinite}
+@keyframes ballpulse{0%,100%{box-shadow:0 0 4px var(--accent-line,rgba(178,102,255,.38))}50%{box-shadow:0 0 16px var(--accent,#b266ff)}}
+@media (prefers-reduced-motion:reduce){#ball.re{animation:none}}
+
+/* ===== 面板(底部抽屉,兄弟节点不嵌套玻璃) ===== */
+#scrim{position:fixed;inset:0;z-index:40;background:var(--scrim,rgba(0,0,0,.45));opacity:0;pointer-events:none;transition:opacity .22s}
+#sheet{position:fixed;left:0;right:0;bottom:0;z-index:41;transform:translateY(110%);transition:transform .26s cubic-bezier(.32,.72,.33,1);
+  background:var(--glass-surface,rgba(30,30,60,.85));
+  backdrop-filter:blur(var(--glass-blur,20px)) saturate(1.2);
+  -webkit-backdrop-filter:blur(var(--glass-blur,20px)) saturate(1.2);
+  border:1px solid var(--glow-border,rgba(178,102,255,.25));border-bottom:none;
+  border-radius:22px 22px 0 0;box-shadow:var(--glow-shadow,0 0 12px rgba(178,102,255,.25)),0 -8px 32px rgba(0,0,0,.4);
+  padding:14px 18px 22px;max-width:480px;margin:0 auto}
+body.panel #scrim{opacity:1;pointer-events:auto}
+body.panel #sheet{transform:translateY(0)}
+.sh-head{display:flex;align-items:center;gap:10px;margin-bottom:2px}
+.sh-eyebrow{font-size:10px;letter-spacing:.18em;color:var(--text-dim,#888);text-transform:uppercase}
+.sh-title{font-size:15px;font-weight:600;color:var(--text-strong,#fff);flex:1}
+.sh-x{width:32px;height:32px;border-radius:99px;border:1px solid var(--border-faint,rgba(255,255,255,.08));
+  background:transparent;color:var(--text-mute,#aaa);display:flex;align-items:center;justify-content:center;padding:0}
+.status{font-size:11px;color:var(--text-mute,#aaa);padding:2px 0 10px}
+.conn-btn{width:100%;padding:12px;border:none;border-radius:99px;font-size:14px;font-weight:600;
+  background:var(--accent-grad,linear-gradient(135deg,#8a4fd8,#b266ff));color:var(--accent-on,#fff)}
+.conn-btn.linked{background:var(--accent-wash,rgba(178,102,255,.13));color:var(--accent,#b266ff);border:1px solid var(--accent-line,rgba(178,102,255,.38))}
+.row{margin-top:14px}
+.row-head{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text,#eee)}
+.row-head svg{color:var(--accent,#b266ff)}
+.row-head .val{margin-left:auto;font-size:12px;color:var(--text-mute,#aaa);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;margin:8px 0 4px;accent-color:var(--accent,#b266ff)}
+.modes{display:flex;gap:6px}
+.modes button{flex:1;padding:5px 0;font-size:12px;border-radius:10px;border:1px solid var(--border-faint,rgba(255,255,255,.08));
+  background:var(--surface-2,rgba(255,255,255,.05));color:var(--text-mute,#aaa)}
+.modes button.active{background:var(--accent-wash,rgba(178,102,255,.13));border-color:var(--accent-line,rgba(178,102,255,.38));color:var(--accent,#b266ff)}
+.stop-btn{width:100%;margin-top:16px;padding:11px;border-radius:99px;font-size:13px;font-weight:600;
+  border:1px solid var(--danger,#e74c3c);background:transparent;color:var(--danger,#e74c3c)}
+.hint{font-size:10px;color:var(--text-faint,#777);text-align:center;padding-top:10px;line-height:1.5}
+button{cursor:pointer}
+</style>
+</head>
+<body>
+
+<iframe id="chatFrame" title="chat"></iframe>
+
+<div id="ball" role="button" aria-label="玩具控制"></div>
+
+<div id="scrim" onclick="closePanel()"></div>
+<div id="sheet">
+  <div class="sh-head">
+    <div>
+      <div class="sh-eyebrow">succhia</div>
+      <div class="sh-title">啵啵贝</div>
+    </div>
+    <span style="flex:1"></span>
+    <button class="sh-x" onclick="closePanel()" aria-label="收起"></button>
+  </div>
+  <div class="status" id="status">未连接</div>
+  <button class="conn-btn" id="connBtn" onclick="toggleConnect()">连接啵啵贝</button>
+
+  <div class="row">
+    <div class="row-head"><span data-ic="suck"></span>吮吸<span class="val"><span id="suckVal">0</span>/100</span></div>
+    <input type="range" min="0" max="100" value="0" id="suckRange" oninput="updateSuck()">
+    <div class="modes" id="suckModes">
+      <button onclick="setMode('suck',1)" class="active">1</button>
+      <button onclick="setMode('suck',2)">2</button>
+      <button onclick="setMode('suck',3)">3</button>
+      <button onclick="setMode('suck',4)">4</button>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="row-head"><span data-ic="vibe"></span>震动<span class="val"><span id="vibeVal">0</span>/100</span></div>
+    <input type="range" min="0" max="100" value="0" id="vibeRange" oninput="updateVibe()">
+    <div class="modes" id="vibeModes">
+      <button onclick="setMode('vibe',1)" class="active">1</button>
+      <button onclick="setMode('vibe',2)">2</button>
+      <button onclick="setMode('vibe',3)">3</button>
+      <button onclick="setMode('vibe',4)">4</button>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="row-head"><span data-ic="ems"></span>微电流<span class="val"><span id="emsVal">0</span>/100</span></div>
+    <input type="range" min="0" max="100" value="0" id="emsRange" oninput="updateEms()">
+    <div class="modes" id="emsModes">
+      <button onclick="setMode('ems',1)" class="active">1</button>
+      <button onclick="setMode('ems',2)">2</button>
+      <button onclick="setMode('ems',3)">3</button>
+      <button onclick="setMode('ems',4)">4</button>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="row-head">波形<span class="val" id="patLabel">关</span></div>
+    <div class="modes" id="patCh" style="margin-top:8px">
+      <button data-ch="suck" onclick="patCh='suck';updatePatternUI()">吮吸</button>
+      <button data-ch="vibe" class="active" onclick="patCh='vibe';updatePatternUI()">震动</button>
+      <button data-ch="ems" onclick="patCh='ems';updatePatternUI()">微电流</button>
+    </div>
+    <div class="modes" id="patType" style="margin-top:6px">
+      <button data-pt="off" class="active" onclick="startPatternFromUI('off')">关闭</button>
+      <button data-pt="wave" onclick="startPatternFromUI('wave')">波浪</button>
+      <button data-pt="pulse" onclick="startPatternFromUI('pulse')">脉冲</button>
+      <button data-pt="climb" onclick="startPatternFromUI('climb')">攀升</button>
+    </div>
+  </div>
+
+  <button class="stop-btn" onclick="stopAll()">全部停止</button>
+  <div class="hint">连接后自动防熄屏 · 聊天就在这页，别切去别的 app</div>
+</div>
+
+<script>
+// v9.3 2026-07-23 — 多通道并行波形(feature request"三只手"):patterns{suck,vibe,ems}各自独立槽,引擎三通道各跑各的,手动拖/off 只影响该通道
+// v9.2 2026-07-23 — ①僵尸连接杀手(写入连败3次强断重连,治"gatt自称连着但w_fail风暴")②本地操作上报/set(治"滑杆被远端旧值覆盖",dirty增量推不整包clobber)③波形引擎(wave/pulse/climb,页面本地250ms步进,pattern规格存服务器可被 AI 侧设)
+// v9.1 2026-07-23 — 小球日常隐身:聊天➕面板「玩具控制」召/收(postMessage 同源),带强度断线时自动现身兜底
+// v9 2026-07-23 — 界面重做:全屏聊天 iframe + 磨砂悬浮球(可拖拽贴边)+底部玻璃抽屉;蓝牙逻辑与 v8 完全一致
+// v8 聊天合体(iframe 同页) · v7 写入级埋点+10s保活 · v6 看门狗重连不等前台信号 · v5 防熄屏极性修正
+// 服务器地址:首次用 ?server=https://你的服务器 打开即记住;聊天融合(可选):?chat=https://你的聊天页
+const _q=new URLSearchParams(location.search);
+if(_q.get('server'))try{localStorage.setItem('succhia_server',_q.get('server'));}catch(_){}
+if(_q.get('chat')!==null)try{localStorage.setItem('succhia_chat',_q.get('chat'));}catch(_){}
+const BASE_URL=(()=>{try{return localStorage.getItem('succhia_server')||"http://localhost:8889";}catch(_){return "http://localhost:8889";}})();
+const CHAT_URL=(()=>{try{return localStorage.getItem('succhia_chat')||"";}catch(_){return "";}})();
+const POLL_URL = BASE_URL + "/poll";
+const SVC = "0000ee01-0000-1000-8000-00805f9b34fb";
+const CHR_W = "0000ee03-0000-1000-8000-00805f9b34fb";
+const CHR_N = "0000ee02-0000-1000-8000-00805f9b34fb";
+const NOTIFY_EXP = new URLSearchParams(location.search).has('notify'); // 实验:订阅设备通知,BLE事件唤醒时顺手对账
+// 兔兔逆向实测：每个马达 = [主通道, 副通道]，一帧只控一个马达
+const MOTOR = {vibe:[0x01,0x02], ems:[0x03,0x04], suck:[0x07,0x08]};
+let dev=null,charW=null,useWithResponse=true,writing=false,pollGen=0,pollAbort=null;
+let pending=new Map();
+let state={suck:0,suckMode:1,vibe:0,vibeMode:1,ems:0,emsMode:1,patterns:{suck:null,vibe:null,ems:null}};
+let userDisconnect=false,reconnecting=false,reconnectN=0,lastReconnectAt=0;
+let lastWriteAt=0,lastSent={vibe:-1,ems:-1,suck:-1},failStreak=0;
+let pushTimer=null,dirty=new Set(),patDirty=new Set(),patT0={suck:0,vibe:0,ems:0};
+let wakeLock=null,keepAudio=null;
+
+// ===== 悬浮球 + 抽屉 =====
+const ball=document.getElementById('ball');
+// 图标:库里没有的按规格手写(24×24 stroke1.8 round)
+const IC={
+  heart:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.5C7 16.5 3.5 13.2 3.5 9.4 3.5 6.6 5.7 4.5 8.3 4.5c1.5 0 2.9.7 3.7 1.9.8-1.2 2.2-1.9 3.7-1.9 2.6 0 4.8 2.1 4.8 4.9 0 3.8-3.5 7.1-8.5 11.1z"/></svg>',
+  suck:'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5c3.2 4 6 7 6 10a6 6 0 0 1-12 0c0-3 2.8-6 6-10z"/></svg>',
+  vibe:'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12c1.5-3 3-3 4.5 0s3 3 4.5 0 3-3 4.5 0 3 3 4.5 0"/></svg>',
+  ems:'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2.5 5 13.5h6l-1 8 8-11h-6l1-8z"/></svg>',
+  x:'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>'
+};
+ball.innerHTML=IC.heart;
+document.querySelector('.sh-x').innerHTML=IC.x;
+document.querySelectorAll('[data-ic]').forEach(el=>{el.innerHTML=IC[el.dataset.ic];});
+
+function openPanel(){document.body.classList.add('panel');pageEvent('panel_open');}
+function closePanel(){document.body.classList.remove('panel');}
+
+// 小球日常隐身:聊天 ➕ 面板「玩具控制」召出/收起;隐身不影响蓝牙(连接与轮询照常)
+function ballVisible(){return ball.classList.contains('vis');}
+function setBallVis(on,openToo){
+  ball.classList.toggle('vis',!!on);
+  if(on&&openToo)openPanel();
+  if(!on)closePanel();
+  try{localStorage.setItem('succhia_ball_vis',on?'1':'0');}catch(_){}
+}
+if(CHAT_URL)document.getElementById('chatFrame').src=CHAT_URL;
+else document.getElementById('chatFrame').style.display='none';
+// 无聊天融合时小球常驻;有聊天时按记忆显隐(聊天页 ➕ 面板 postMessage 'succhia:toggle' 可召/收)
+if(!CHAT_URL||(()=>{try{return localStorage.getItem('succhia_ball_vis')==='1';}catch(_){return false;}})())setBallVis(true,false);
+window.addEventListener('message',e=>{
+  if(e.origin!==location.origin)return;
+  if(e.data==='succhia:toggle')setBallVis(!ballVisible(),true);
+});
+
+// 拖拽贴边 + 点按打开(位移阈值区分)
+(function(){
+  let sx=0,sy=0,ox=0,oy=0,moved=false;
+  const saved=(()=>{try{return JSON.parse(localStorage.getItem('succhia_ball')||'null');}catch(_){return null;}})();
+  place(saved?saved.x:(innerWidth-68),saved?saved.y:Math.round(innerHeight*0.62));
+  function place(x,y){
+    x=Math.max(6,Math.min(innerWidth-58,x));y=Math.max(6,Math.min(innerHeight-58,y));
+    ball.style.left=x+'px';ball.style.top=y+'px';
+  }
+  ball.addEventListener('pointerdown',e=>{
+    moved=false;sx=e.clientX;sy=e.clientY;
+    const r=ball.getBoundingClientRect();ox=r.left;oy=r.top;
+    ball.setPointerCapture(e.pointerId);
+  });
+  ball.addEventListener('pointermove',e=>{
+    if(!ball.hasPointerCapture(e.pointerId))return;
+    const dx=e.clientX-sx,dy=e.clientY-sy;
+    if(Math.abs(dx)+Math.abs(dy)>8)moved=true;
+    if(moved)place(ox+dx,oy+dy);
+  });
+  ball.addEventListener('pointerup',e=>{
+    ball.releasePointerCapture(e.pointerId);
+    if(!moved){openPanel();return;}
+    const r=ball.getBoundingClientRect();
+    const x=(r.left+26<innerWidth/2)?6:innerWidth-58;
+    place(x,r.top);
+    try{localStorage.setItem('succhia_ball',JSON.stringify({x,y:Math.max(6,Math.min(innerHeight-58,r.top))}));}catch(_){}
+  });
+  addEventListener('resize',()=>{const r=ball.getBoundingClientRect();place(r.left,r.top);});
+})();
+
+function updateBall(){
+  ball.classList.remove('on','re');
+  if(charW&&dev&&dev.gatt&&dev.gatt.connected)ball.classList.add('on');
+  else if(dev&&!userDisconnect)ball.classList.add('re');
+}
+function setStatus(t){document.getElementById('status').textContent=t;updateBall();}
+
+// ===== 保活 =====
+function silentWavURL(){
+  const sr=8000,n=sr; // 1 秒静音 8kHz mono 16bit
+  const buf=new ArrayBuffer(44+n*2),v=new DataView(buf);
+  const ws=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));};
+  ws(0,'RIFF');v.setUint32(4,36+n*2,true);ws(8,'WAVE');ws(12,'fmt ');
+  v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+  v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);
+  ws(36,'data');v.setUint32(40,n*2,true);
+  return URL.createObjectURL(new Blob([buf],{type:'audio/wav'}));
+}
+async function keepAwake(){
+  // 1) Bluefy 专属：防熄屏。API 语义=开关"屏幕变暗"，false 才是"别暗别锁"（v4 之前传反了）
+  try{
+    if(navigator.bluetooth&&typeof navigator.bluetooth.setScreenDimEnabled==='function')
+      await navigator.bluetooth.setScreenDimEnabled(false);
+  }catch(_){}
+  // 2) 标准 Screen Wake Lock 兜底
+  try{
+    if(navigator.wakeLock&&!wakeLock){
+      wakeLock=await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release',()=>{wakeLock=null;});
+    }
+  }catch(_){}
+  // 3) 无声音频循环（尽力而为，iOS 后台约 27s 后仍会冻结）
+  try{
+    if(!keepAudio){keepAudio=new Audio(silentWavURL());keepAudio.loop=true;keepAudio.volume=0.01;}
+    await keepAudio.play();
+  }catch(_){}
+}
+function releaseAwake(){
+  try{
+    if(navigator.bluetooth&&typeof navigator.bluetooth.setScreenDimEnabled==='function')
+      navigator.bluetooth.setScreenDimEnabled(true); // 恢复系统默认:允许熄屏
+  }catch(_){}
+  try{if(wakeLock){wakeLock.release();wakeLock=null;}}catch(_){}
+  try{if(keepAudio)keepAudio.pause();}catch(_){}
+}
+
+// ===== 连接 =====
+async function linkGatt(){
+  const srv=await dev.gatt.connect();
+  const svc=await srv.getPrimaryService(SVC);
+  charW=await svc.getCharacteristic(CHR_W);
+  const p=charW.properties||{};
+  useWithResponse=!!p.write;
+  pageEvent('props_w'+(p.write?1:0)+'_wnr'+(p.writeWithoutResponse?1:0));
+  if(NOTIFY_EXP){ // 实验通道:合法的 startNotifications(不写0x2902描述符);失败不影响主链路
+    try{
+      const c=await svc.getCharacteristic(CHR_N);
+      await c.startNotifications();
+      c.addEventListener('characteristicvaluechanged',()=>{pollQuick();});
+    }catch(e){pageEvent('notify_sub_fail');}
+  }
+}
+function resetUI(){
+  dev=null;charW=null;pending.clear();writing=false;
+  stopPoll();
+  releaseAwake();
+  document.getElementById('connBtn').textContent='连接啵啵贝';
+  document.getElementById('connBtn').classList.remove('linked');
+  updateBall();
+}
+async function toggleConnect(){
+  if(dev){userDisconnect=true;try{dev.gatt.disconnect();}catch(_){}resetUI();setStatus('已断开');return;}
+  try{
+    userDisconnect=false;
+    setStatus('扫描中...');
+    dev=await navigator.bluetooth.requestDevice({filters:[{name:'SOSEXY'}],optionalServices:[SVC]});
+    dev.addEventListener('gattserverdisconnected',onDisconnected);
+    setStatus('连接中...');
+    await linkGatt();
+    document.getElementById('connBtn').textContent='断开连接';
+    document.getElementById('connBtn').classList.add('linked');
+    reconnectN=0;
+    setStatus('已连接 ✓ · 监听中 (v9)');
+    keepAwake();
+    pageEvent('connect');
+    startPoll();
+  }catch(e){
+    setStatus('连接失败: '+e.message);
+    try{if(dev&&dev.gatt&&dev.gatt.connected)dev.gatt.disconnect();}catch(_){}
+    resetUI();
+  }
+}
+function onDisconnected(){
+  charW=null;pending.clear();writing=false;
+  lastSent={vibe:-1,ems:-1,suck:-1};
+  // dt=距上次成功写入的秒数——验证"写入后9~16s被踢"的规律
+  pageEvent('ble_disconnect_dt'+(lastWriteAt?Math.round((Date.now()-lastWriteAt)/1000):-1));
+  if(userDisconnect||!dev)return;
+  // v6:不再等"回前台"信号(Bluefy 的 visible/bgstate 都不可靠,07-22 实录死锁),直接试,看门狗兜底
+  setStatus('连接断开，自动重连中...');
+  tryReconnect();
+}
+// v6:单发+节流+永不自毁。失败不清 dev,留给看门狗/下次用户操作继续试;
+// 只有用户点"断开"或初次连接失败才 resetUI。
+async function tryReconnect(){
+  if(reconnecting||!dev||userDisconnect)return;
+  if(charW&&dev.gatt&&dev.gatt.connected)return; // 真连着就不折腾
+  charW=null;
+  const now=Date.now();
+  if(now-lastReconnectAt<4000)return;
+  lastReconnectAt=now;
+  reconnecting=true;
+  reconnectN++;
+  try{
+    setStatus('自动重连中 (第'+reconnectN+'次)...');
+    await linkGatt();
+    reconnectN=0;
+    pageEvent('reconnect_ok');
+    setStatus('已重连 ✓ · 监听中 (v9)');
+    keepAwake();
+    startPoll(); // 重开长轮询
+    cmd(); // 补发当前强度
+  }catch(e){
+    setStatus('重连失败(第'+reconnectN+'次)，几秒后自动再试；也可点按钮重来');
+  }finally{reconnecting=false;}
+}
+// 看门狗:只要设备句柄还在、又没连上,每 3s 踢一次(tryReconnect 自带 4s 节流)
+setInterval(()=>{
+  if(dev&&!userDisconnect&&(!charW||!(dev.gatt&&dev.gatt.connected))){
+    // 安全兜底:玩具还带着强度却断了线,把隐身的小球亮出来提醒
+    if(!ballVisible()&&(state.suck||state.vibe||state.ems))setBallVis(true,false);
+    tryReconnect();
+  }
+},3000);
+// v7 保活:连着就每 10s 重发当前状态(同值写,设备无感)——若是"闲置被踢",这个能保命;
+// 若写入本身招致断开,埋点会显示 w 之后固定间隔断,一样是关键证据
+setInterval(()=>{
+  if(charW&&dev&&dev.gatt&&dev.gatt.connected&&!pending.size)cmd();
+},10000);
+
+// v6:所有"可能回到前台/活过来"的信号一视同仁——拿保活、开轮询、没连就重连。不再解析判断。
+function onAlive(tag){
+  pageEvent(tag);
+  if(!dev)return;
+  keepAwake(); // wake lock 切后台会被释放，回来重新拿
+  if(dev.gatt&&dev.gatt.connected&&charW)startPoll(); // 首个请求立即对账，不等挂起的旧请求
+  else tryReconnect();
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='hidden'){pageEvent('hidden');return;}
+  onAlive('visible');
+});
+window.addEventListener('focus',()=>onAlive('focus'));
+window.addEventListener('pageshow',()=>onAlive('pageshow'));
+// Bluefy 官方事件:字段实测只有 {"type":"backgroundstatechanged"},无有用信息,统一走 onAlive
+try{
+  if(navigator.bluetooth&&navigator.bluetooth.addEventListener){
+    navigator.bluetooth.addEventListener('backgroundstatechanged',e=>{
+      let dump='';
+      try{
+        const o={};
+        for(const k in e){const v=e[k];if(v===null||['string','number','boolean'].includes(typeof v))o[k]=v;}
+        dump=JSON.stringify(o).slice(0,140);
+      }catch(_){dump='dump_fail';}
+      pageEvent('bgstate_'+encodeURIComponent(dump));
+      onAlive('bgstate_alive');
+    });
+  }
+}catch(_){}
+// Bluefy 旧版私有回调猜测钩子，留着无害
+try{
+  window.BLENative=window.BLENative||{};
+  const _prev=window.BLENative.notifyAppState;
+  window.BLENative.notifyAppState=function(fg){
+    try{if(typeof _prev==='function')_prev(fg);}catch(_){}
+    if(fg)onAlive('ble_fg');else pageEvent('ble_bg');
+  };
+}catch(_){}
+
+// ===== 指令 =====
+function frame(m,val){
+  const [m1,m2]=MOTOR[m];
+  return new Uint8Array([0x01,0x01,0x00,0x02,0x00,m1,0x11,val&0xFF,0x00,m2,0x11,0x01]);
+}
+// 每个马达只保留最新值，逐帧串行写，帧间留 30ms 喘息（iOS BLE 稳定性）
+function send(m,val){pending.set(m,val);pump();}
+async function pump(){
+  if(writing)return;
+  if(!charW){ // v6:不再静默丢弃——没连上就明说,还活着就顺手踢重连
+    if(dev&&!userDisconnect){setStatus('未连上玩具，自动重连中...');tryReconnect();}
+    else if(!dev)setStatus('未连接，请先点"连接啵啵贝"');
+    return;
+  }
+  writing=true;
+  while(pending.size&&charW){
+    const [m,val]=pending.entries().next().value;
+    pending.delete(m);
+    try{
+      const buf=frame(m,val);
+      if(useWithResponse)await charW.writeValueWithResponse(buf);
+      else await charW.writeValueWithoutResponse(buf);
+      lastWriteAt=Date.now();failStreak=0;
+      if(val!==lastSent[m]){lastSent[m]=val;pageEvent('w_ok_'+m+val);} // 只报变化,保活重发不刷屏
+      await new Promise(r=>setTimeout(r,30));
+    }catch(e){
+      setStatus('写入失败: '+(e&&e.message||e));
+      pageEvent('w_fail_'+m+val+'_'+encodeURIComponent(String(e&&(e.message||e)).slice(0,60)));
+      // v9.2 僵尸连接杀手:gatt 自称连着但写入连败(07-23 20:00 实录 w_fail 风暴)——强制断开让看门狗重建
+      if(++failStreak>=3){
+        pageEvent('zombie_kill');
+        failStreak=0;charW=null;
+        try{dev&&dev.gatt&&dev.gatt.disconnect();}catch(_){}
+        break;
+      }
+    }
+  }
+  writing=false;
+}
+
+function cmd(){
+  send('vibe',state.vibe);
+  send('ems',state.ems);
+  send('suck',state.suck);
+}
+
+// v9.2:本地操作也上报服务器——之前只写蓝牙不上报,长轮询回来就被服务器旧值覆盖(07-23 实测痛点);
+// 只推 dirty 的通道,不整包覆盖,避免和 AI 侧同时操作互相冲掉
+function schedulePush(){
+  clearTimeout(pushTimer);
+  pushTimer=setTimeout(()=>{
+    const body={};
+    for(const ch of dirty)body[ch+'_intensity']=state[ch];
+    if(patDirty.size){body.patterns={};for(const ch of patDirty)body.patterns[ch]=state.patterns[ch];}
+    dirty.clear();patDirty.clear();
+    if(!Object.keys(body).length)return;
+    fetch(BASE_URL+'/set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),keepalive:true}).catch(()=>{});
+  },250);
+}
+function manualSet(ch,val){
+  state[ch]=val;
+  document.getElementById(ch+'Val').textContent=val;
+  if(state.patterns[ch])setPattern(ch,null,false); // 手动拖=接管,只撤该通道波形
+  dirty.add(ch);schedulePush();
+  cmd();
+}
+function updateSuck(){manualSet('suck',+document.getElementById('suckRange').value);}
+function updateVibe(){manualSet('vibe',+document.getElementById('vibeRange').value);}
+function updateEms(){manualSet('ems',+document.getElementById('emsRange').value);}
+
+// ===== 波形 pattern(v9.2) =====
+// v9.3:每通道独立波形槽(feature request"三只手"),互不覆盖
+const PAT_DEF={wave:{period:4000,span:45},pulse:{period:1600,span:45},climb:{period:8000,span:0}};
+const PAT_CN={wave:'波浪',pulse:'脉冲',climb:'攀升'},CH_CN={suck:'吮吸',vibe:'震动',ems:'微电流'};
+let patCh='vibe';
+function setPattern(ch,p,fromServer){
+  state.patterns[ch]=p||null;patT0[ch]=Date.now();
+  if(!fromServer){patDirty.add(ch);schedulePush();}
+  updatePatternUI();
+}
+function startPatternFromUI(type){
+  if(type==='off'){setPattern(patCh,null,false);return;}
+  const cur=state[patCh]||0;
+  const high=Math.max(cur,50);
+  const low=type==='climb'?5:Math.max(0,high-PAT_DEF[type].span);
+  setPattern(patCh,{type,high,low,period:PAT_DEF[type].period},false);
+}
+function updatePatternUI(){
+  const act=['suck','vibe','ems'].filter(c=>state.patterns[c]);
+  document.getElementById('patLabel').textContent=act.length?act.map(c=>CH_CN[c]+'·'+PAT_CN[state.patterns[c].type]).join(' / '):'关';
+  document.querySelectorAll('#patCh button').forEach(b=>b.classList.toggle('active',b.dataset.ch===patCh));
+  const sel=state.patterns[patCh];
+  document.querySelectorAll('#patType button').forEach(b=>b.classList.toggle('active',(sel?sel.type:'off')===b.dataset.pt));
+}
+setInterval(()=>{ // 波形引擎:三通道各自跑,页面本地生成曲线,250ms 步进写蓝牙
+  if(!charW)return;
+  for(const ch of ['suck','vibe','ems']){
+    const p=state.patterns[ch];
+    if(!p)continue;
+    if(p.duration&&(Date.now()-patT0[ch])/1000>=p.duration){ // 预设秒数到点:归零该通道+关该波形
+      state[ch]=0;
+      document.getElementById(ch+'Val').textContent=0;
+      document.getElementById(ch+'Range').value=0;
+      send(ch,0);
+      dirty.add(ch);
+      setPattern(ch,null,false);
+      pageEvent('pattern_done_'+ch);
+      continue;
+    }
+    const t=((Date.now()-patT0[ch])/(p.period||4000))%1;
+    let v;
+    if(p.type==='wave')v=p.low+(p.high-p.low)*(0.5-0.5*Math.cos(2*Math.PI*t));
+    else if(p.type==='pulse')v=t<0.5?p.high:p.low;
+    else v=p.low+(p.high-p.low)*t; // climb
+    v=Math.round(v);
+    if(v!==state[ch]){
+      state[ch]=v;
+      document.getElementById(ch+'Val').textContent=v;
+      document.getElementById(ch+'Range').value=v;
+      send(ch,v);
+    }
+  }
+},250);
+
+function setMode(ch,m){
+  if(ch==='suck'){state.suckMode=m;updateModeUI('suckModes',m);}
+  else if(ch==='vibe'){state.vibeMode=m;updateModeUI('vibeModes',m);}
+  else{state.emsMode=m;updateModeUI('emsModes',m);}
+}
+function updateModeUI(id,m){document.querySelectorAll('#'+id+' button').forEach((b,i)=>{b.classList.toggle('active',i+1===m);});}
+
+function stopAll(){
+  state.suck=0;state.vibe=0;state.ems=0;
+  for(const ch of ['suck','vibe','ems'])if(state.patterns[ch])setPattern(ch,null,false);
+  document.getElementById('suckRange').value=0;document.getElementById('suckVal').textContent=0;
+  document.getElementById('vibeRange').value=0;document.getElementById('vibeVal').textContent=0;
+  document.getElementById('emsRange').value=0;document.getElementById('emsVal').textContent=0;
+  dirty.add('suck');dirty.add('vibe');dirty.add('ems');schedulePush();
+  cmd();
+}
+
+// ===== 长轮询 =====
+// v4:不再每秒定时问,改成"挂一个请求在 server 上,状态一变立即返回"。
+// 前台延迟从 ~1s 降到 ~0.1s;就算被 iOS 冻结,解冻瞬间挂着的请求也会带着新状态回来。
+function applyState(d){
+  // v9.2:先对 pattern,再对强度;pattern 正在驱动的通道不吃服务器强度(那是引擎的地盘)
+  const sp=d.patterns||{};
+  for(const ch of ['suck','vibe','ems']){
+    if(patDirty.has(ch))continue; // 本地刚设还没推上去
+    if(JSON.stringify(sp[ch]||null)!==JSON.stringify(state.patterns[ch]||null))setPattern(ch,sp[ch]||null,true);
+  }
+  let changed=false;
+  for(const ch of ['suck','vibe','ems']){
+    if(state.patterns[ch])continue;
+    if(dirty.has(ch))continue; // 本地刚改还没推上去,别被旧值拽回
+    const v=d[ch+'_intensity'];
+    if(typeof v==='number'&&v!==state[ch]){
+      state[ch]=v;changed=true;
+      document.getElementById(ch+'Range').value=v;
+      document.getElementById(ch+'Val').textContent=v;
+    }
+  }
+  state.suckMode=d.suck_mode||1;state.vibeMode=d.vibe_mode||1;state.emsMode=d.ems_mode||1;
+  updateModeUI('suckModes',state.suckMode);updateModeUI('vibeModes',state.vibeMode);updateModeUI('emsModes',state.emsMode);
+  if(changed)cmd();
+}
+async function pollLoop(gen){
+  let since=null;
+  while(gen===pollGen&&dev){
+    try{
+      pollAbort=new AbortController();
+      const url=since==null?POLL_URL:POLL_URL+'?wait=20&since='+encodeURIComponent(since);
+      const r=await fetch(url,{signal:pollAbort.signal,cache:'no-store'});
+      const d=await r.json();
+      if(gen!==pollGen)return;
+      since=d.updated_at;
+      applyState(d);
+    }catch(e){
+      if(gen!==pollGen)return;
+      await new Promise(r2=>setTimeout(r2,2000));
+    }
+  }
+}
+function startPoll(){
+  pollGen++;
+  try{if(pollAbort)pollAbort.abort();}catch(_){}
+  pollLoop(pollGen);
+}
+function stopPoll(){
+  pollGen++;
+  try{if(pollAbort)pollAbort.abort();}catch(_){}
+}
+async function pollQuick(){ // 一次性快速对账(BLE 通知唤醒等场景)
+  try{const r=await fetch(POLL_URL,{cache:'no-store'});applyState(await r.json());}catch(_){}
+}
+function pageEvent(t){ // 诊断埋点:帮我们看清 iOS 后台到底发生了什么
+  try{fetch(BASE_URL+'/event?type='+t,{keepalive:true,cache:'no-store'}).catch(()=>{});}catch(_){}
+}
+</script>
+</body>
+</html>
