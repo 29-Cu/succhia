@@ -29,7 +29,7 @@ AI 调 MCP 工具 ──POST──▶ 状态服务器(succhia-server.py, 长轮�
 ## 我们借鉴了什么（致谢）
 
 - **[tutu-kitty/Toy-Relay-AI-mcp-SOSEXY](https://github.com/tutu-kitty/Toy-Relay-AI-mcp-SOSEXY)** 与 **[51enuxu/sosexy-ble-control](https://github.com/51enuxu/sosexy-ble-control)** —— SOSEXY 的 12 字节帧协议逆向全部来自这两个仓库（`01 01 00 02 00 [主ch] 11 [强度] 00 [副ch] 11 01`，vibe 01/02、ems 03/04、suck 07/08）。没有它们就没有一切。
-- **吱吱 & Veille 的《逆向任意 BLE 玩具协议》教程** —— 「VPS 状态 + 浏览器蓝牙桥」的架构思路与「观察 Notify 值破译协议」的方法论。
+- **[吱吱 & Veille 的《逆向任意 BLE 玩具协议》教程](https://claude.ai/public/artifacts/921eda06-e567-4cde-85af-8cde831a608f)**(MIT,原文注明"二传请标注来源") —— 「VPS 状态 + 浏览器蓝牙桥」的架构思路与「观察 Notify 值破译协议」的方法论。
 - **Lovense** —— pattern（波形）的产品概念。
 
 ### 关于 [Lumenocturne/bobo-bridge](https://github.com/Lumenocturne/bobo-bridge)
